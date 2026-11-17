@@ -1,0 +1,6 @@
+{
+  "name": "Family Connect",
+  "description": "Private family learning academy, sandboxed coding studio, multiplayer Phaser racing arena, LiveKit/WebRTC video calling, and real-time family messenger.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
