@@ -7,7 +7,6 @@ import crypto from 'node:crypto';
 import cookieParser from 'cookie-parser';
 import bcrypt from 'bcryptjs';
 import { AccessToken } from 'livekit-server-sdk';
-import { createServer as createViteServer } from 'vite';
 import {
   awardPoints,
   checkAndGrantAchievement,
@@ -85,6 +84,7 @@ function requireAdmin(req: AuthedRequest, res: Response, next: NextFunction) {
 }
 
 const app = express();
+app.set('trust proxy', 1);
 app.use(express.json({ limit: '4mb' }));
 app.use(cookieParser());
 
@@ -1056,6 +1056,7 @@ async function start() {
 
   const isProd = process.env.NODE_ENV === 'production';
   if (!isProd) {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true, hmr: false },
       appType: 'spa',
@@ -1069,7 +1070,7 @@ async function start() {
     });
   }
 
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
   httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`Family Connect server listening on http://0.0.0.0:${PORT}`);
   });
