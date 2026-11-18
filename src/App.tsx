@@ -62,7 +62,19 @@ export default function App() {
       setLiveMembers(data.users || []);
       const me = data.users?.find((u) => u.id === user.id);
       if (me) {
-        setUser((prev) => (prev ? { ...prev, points: me.points, streak_days: me.streak_days } : prev));
+        setUser((prev) =>
+          prev
+            ? {
+                ...prev,
+                name: me.name,
+                avatar_url: me.avatar_url,
+                role: me.role,
+                age: me.age,
+                points: me.points,
+                streak_days: me.streak_days,
+              }
+            : prev
+        );
       }
     });
     return () => {
@@ -203,7 +215,7 @@ export default function App() {
         {section === 'video' && <VideoCallPage currentUser={user} />}
         {section === 'messenger' && <MessengerPage currentUser={user} liveMembers={liveMembers} />}
         {section === 'rewards' && <RewardsPage currentUser={user} />}
-        {section === 'admin' && user.role === 'admin' && <AdminPage onPointsUpdated={refreshMe} />}
+        {section === 'admin' && user.role === 'admin' && <AdminPage currentUserId={user.id} onPointsUpdated={refreshMe} />}
       </main>
     </div>
   );

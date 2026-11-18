@@ -170,7 +170,7 @@ export function broadcastToAllFamily(event: string, payload: unknown) {
   }
 }
 
-function broadcastPresence() {
+export function broadcastPresence() {
   const users = db
     .prepare('SELECT id, name, role, age, avatar_url, is_online, last_active_at, points, streak_days FROM users ORDER BY id ASC')
     .all();
@@ -245,8 +245,8 @@ function positionCarsOnGrid(room: RaceRoomState) {
 
   let idx = 0;
   for (const p of room.players.values()) {
-    const rowOffset = -idx * 34;
-    const laneOffset = idx === 0 ? -18 : idx === 1 ? 18 : 0;
+    const rowOffset = -Math.floor(idx / 2) * 38;
+    const laneOffset = idx % 2 === 0 ? -18 : 18;
     p.x = start.x + Math.cos(startAngle) * rowOffset + perpX * laneOffset;
     p.y = start.y + Math.sin(startAngle) * rowOffset + perpY * laneOffset;
     p.angle = startAngle;
@@ -340,9 +340,9 @@ function stepRacePhysics(room: RaceRoomState) {
     room.status = 'finished';
     db.prepare('UPDATE racing_rooms SET status = ? WHERE invite_code = ?').run('finished', room.code);
 
-    const pointTable = [60, 40, 25];
+    const pointTable = [60, 40, 25, 20, 15, 10];
     for (const p of sorted) {
-      const pts = pointTable[p.position - 1] ?? 20;
+      const pts = pointTable[p.position - 1] ?? 10;
       db.prepare(`
         INSERT INTO racing_results (room_code, track_id, user_id, car_model, car_color, position, race_time_ms, points_earned)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -386,7 +386,7 @@ export function attachWebSocketServer(httpServer: HttpServer) {
     sendJson(ws, 'ws:ready', {
       userId: user.id,
       activeRooms: Array.from(raceRooms.values())
-        .filter((r) => r.status === 'lobby' && r.players.size < 3)
+        .filter((r) => r.status === 'lobby' && r.players.size < 6)
         .map((r) => ({ code: r.code, trackId: r.trackId, playerCount: r.players.size })),
     });
 
@@ -650,12 +650,12 @@ export function attachWebSocketServer(httpServer: HttpServer) {
           sendJson(ws, 'race:error', { message: `Race room ${code} was not found.` });
           return;
         }
-        if (room.players.size >= 3 && !room.players.has(user.id)) {
-          sendJson(ws, 'race:error', { message: 'This private family room already has 3 players.' });
+        if (room.players.size >= 6 && !room.players.has(user.id)) {
+          sendJson(ws, 'race:error', { message: 'This private family room already has 6 players.' });
           return;
         }
         if (!room.players.has(user.id)) {
-          const palette = ['#2563eb', '#dc2626', '#059669'];
+          const palette = ['#2563eb', '#dc2626', '#059669', '#d97706', '#7c3aed', '#0891b2'];
           const models: CarModel[] = ['turbo-gt', 'apex-rally', 'volt-kart'];
           const idx = room.players.size;
           room.players.set(user.id, {

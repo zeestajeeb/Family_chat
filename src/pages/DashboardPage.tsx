@@ -83,7 +83,11 @@ export function DashboardPage({ currentUser, liveMembers, onNavigate }: Dashboar
         <div className="lg:col-span-7 p-6 lg:p-8 flex flex-col justify-between">
           <div>
             <p className="text-xs font-medium text-slate-500">
-              {currentUser.role === 'admin' ? 'Parent Administrator' : `Student · Age ${currentUser.age ?? ''}`}
+              {currentUser.role === 'admin'
+                ? 'Parent Administrator'
+                : currentUser.age
+                  ? `Student · Age ${currentUser.age}`
+                  : 'Student'}
               <span className="mx-2" aria-hidden="true">·</span>
               <span className="tabular-nums">{currentUser.points} Family Points</span>
               <span className="mx-2" aria-hidden="true">·</span>
@@ -170,7 +174,7 @@ export function DashboardPage({ currentUser, liveMembers, onNavigate }: Dashboar
                   </span>
                 </div>
                 <p className="mt-0.5 truncate text-xs text-slate-600">
-                  {m.role === 'admin' ? 'Parent Admin' : `Student · Age ${m.age}`}
+                  {m.role === 'admin' ? 'Parent Admin' : m.age ? `Student · Age ${m.age}` : 'Student'}
                   <span className="mx-1.5" aria-hidden="true">·</span>
                   <span className="tabular-nums font-medium">{m.points} pts</span>
                 </p>

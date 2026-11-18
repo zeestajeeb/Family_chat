@@ -625,3 +625,44 @@ export function checkAndGrantAchievement(userId: number, slug: string) {
   );
   return ach;
 }
+
+export function ensureUserConversations(userId: number, userName: string) {
+  let groupConv = db
+    .prepare(`SELECT id FROM conversations WHERE type = 'group' ORDER BY id ASC LIMIT 1`)
+    .get() as { id: number } | undefined;
+
+  if (!groupConv) {
+    const info = db.prepare(`INSERT INTO conversations (type, title) VALUES ('group', 'Family Lounge')`).run();
+    groupConv = { id: Number(info.lastInsertRowid) };
+  }
+
+  db.prepare(`INSERT OR IGNORE INTO conversation_members (conversation_id, user_id) VALUES (?, ?)`).run(
+    groupConv.id,
+    userId
+  );
+
+  const others = db.prepare('SELECT id, name FROM users WHERE id != ? ORDER BY id ASC').all(userId) as {
+    id: number;
+    name: string;
+  }[];
+
+  const findDirect = db.prepare(`
+    SELECT c.id FROM conversations c
+    JOIN conversation_members cm1 ON cm1.conversation_id = c.id AND cm1.user_id = ?
+    JOIN conversation_members cm2 ON cm2.conversation_id = c.id AND cm2.user_id = ?
+    WHERE c.type = 'direct'
+    LIMIT 1
+  `);
+  const insertConv = db.prepare(`INSERT INTO conversations (type, title) VALUES ('direct', ?)`);
+  const insertMember = db.prepare(`INSERT OR IGNORE INTO conversation_members (conversation_id, user_id) VALUES (?, ?)`);
+
+  for (const other of others) {
+    const existing = findDirect.get(userId, other.id) as { id: number } | undefined;
+    if (!existing) {
+      const cid = Number(insertConv.run(`${userName} & ${other.name}`).lastInsertRowid);
+      insertMember.run(cid, userId);
+      insertMember.run(cid, other.id);
+    }
+  }
+}
+

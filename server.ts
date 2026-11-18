@@ -12,13 +12,14 @@ import {
   checkAndGrantAchievement,
   createSession,
   db,
+  ensureUserConversations,
   getUserBySession,
   logActivity,
   notifyFamily,
   seedDatabase,
 } from './server/db.ts';
 import { GUIDED_PROJECT_TEMPLATES } from './server/seedData.ts';
-import { attachWebSocketServer, TRACKS } from './server/ws.ts';
+import { attachWebSocketServer, broadcastPresence, TRACKS } from './server/ws.ts';
 
 seedDatabase();
 
@@ -835,6 +836,60 @@ app.get('/api/admin/overview', requireAuth, requireAdmin, (_req: AuthedRequest, 
   });
 });
 
+app.post('/api/admin/users', requireAuth, requireAdmin, (req: AuthedRequest, res: Response) => {
+  const name = String(req.body?.name || '').trim().slice(0, 80);
+  const email = String(req.body?.email || '').trim().toLowerCase().slice(0, 120);
+  const password = String(req.body?.password || '');
+  const role: 'admin' | 'student' = req.body?.role === 'admin' ? 'admin' : 'student';
+  const rawAge = req.body?.age;
+  const age = rawAge !== undefined && rawAge !== null && String(rawAge).trim() !== '' ? Number(rawAge) : null;
+  const bio = String(req.body?.bio || '').trim().slice(0, 200);
+  const avatarUrl = String(req.body?.avatarUrl || '/src/assets/images/avatar_child_one_1794844439270.jpg').trim();
+
+  if (!name) {
+    res.status(400).json({ error: 'Name is required.' });
+    return;
+  }
+  if (!email || !email.includes('@')) {
+    res.status(400).json({ error: 'A valid sign-in email is required.' });
+    return;
+  }
+  if (password.length < 8) {
+    res.status(400).json({ error: 'Password must be at least 8 characters long.' });
+    return;
+  }
+  if (age !== null && (!Number.isFinite(age) || age < 1 || age > 120)) {
+    res.status(400).json({ error: 'Please enter a valid age between 1 and 120, or leave blank.' });
+    return;
+  }
+
+  const existingEmail = db.prepare('SELECT id FROM users WHERE lower(email) = ?').get(email);
+  if (existingEmail) {
+    res.status(409).json({ error: 'Another family account is already using that email.' });
+    return;
+  }
+
+  const hash = bcrypt.hashSync(password, 10);
+  const info = db
+    .prepare(
+      `INSERT INTO users (name, email, password_hash, role, age, avatar_url, bio, points, streak_days)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1)`
+    )
+    .run(name, email, hash, role, age, avatarUrl, bio);
+
+  const newUserId = Number(info.lastInsertRowid);
+  ensureUserConversations(newUserId, name);
+  broadcastPresence();
+  logActivity(req.user!.id, 'Account Created', `${req.user!.name} added family member ${name} (${role})`);
+
+  const created = db
+    .prepare(
+      'SELECT id, name, email, role, age, avatar_url, bio, points, streak_days, is_online, last_active_at FROM users WHERE id = ?'
+    )
+    .get(newUserId);
+  res.status(201).json({ user: created });
+});
+
 app.post('/api/admin/users/:id/reset-password', requireAuth, requireAdmin, (req: AuthedRequest, res: Response) => {
   const targetId = Number(req.params.id);
   const newPassword = String(req.body?.newPassword || '');
@@ -842,28 +897,145 @@ app.post('/api/admin/users/:id/reset-password', requireAuth, requireAdmin, (req:
     res.status(400).json({ error: 'Password must be at least 8 characters long.' });
     return;
   }
+  const target = db.prepare('SELECT id, name FROM users WHERE id = ?').get(targetId) as
+    | { id: number; name: string }
+    | undefined;
+  if (!target) {
+    res.status(404).json({ error: 'Family member not found.' });
+    return;
+  }
   const hash = bcrypt.hashSync(newPassword, 10);
   db.prepare(`UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?`).run(hash, targetId);
-  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(targetId);
-  logActivity(req.user!.id, 'Password Reset', `Administrator reset password for user #${targetId}`);
+  if (targetId === req.user!.id && req.cookies?.fc_session) {
+    db.prepare('DELETE FROM sessions WHERE user_id = ? AND id != ?').run(targetId, req.cookies.fc_session);
+  } else {
+    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(targetId);
+  }
+  logActivity(req.user!.id, 'Password Reset', `${req.user!.name} updated password for ${target.name}`);
   res.json({ ok: true });
 });
 
 app.put('/api/admin/users/:id', requireAuth, requireAdmin, (req: AuthedRequest, res: Response) => {
   const targetId = Number(req.params.id);
-  const name = String(req.body?.name || '').trim();
-  const age = req.body?.age ? Number(req.body.age) : null;
-  const bio = String(req.body?.bio || '').trim();
+  const existing = db.prepare('SELECT * FROM users WHERE id = ?').get(targetId) as
+    | (AuthedUser & { password_hash: string })
+    | undefined;
+  if (!existing) {
+    res.status(404).json({ error: 'Family member not found.' });
+    return;
+  }
+
+  const name = String(req.body?.name ?? existing.name).trim().slice(0, 80);
+  const email = String(req.body?.email ?? existing.email).trim().toLowerCase().slice(0, 120);
+  const role: 'admin' | 'student' = req.body?.role === 'admin' ? 'admin' : req.body?.role === 'student' ? 'student' : existing.role;
+  const rawAge = req.body?.age;
+  const age =
+    rawAge === undefined
+      ? existing.age
+      : rawAge === null || String(rawAge).trim() === ''
+        ? null
+        : Number(rawAge);
+  const bio = String(req.body?.bio ?? existing.bio ?? '').trim().slice(0, 200);
+  const avatarUrl = String(req.body?.avatarUrl ?? existing.avatar_url).trim() || existing.avatar_url;
+  const newPassword = req.body?.newPassword ? String(req.body.newPassword) : '';
+
   if (!name) {
     res.status(400).json({ error: 'Name is required.' });
     return;
   }
-  db.prepare(`UPDATE users SET name = ?, age = ?, bio = ?, updated_at = datetime('now') WHERE id = ?`).run(
-    name,
-    age,
-    bio,
-    targetId
-  );
+  if (!email || !email.includes('@')) {
+    res.status(400).json({ error: 'A valid email is required.' });
+    return;
+  }
+  if (age !== null && (!Number.isFinite(age) || age < 1 || age > 120)) {
+    res.status(400).json({ error: 'Please enter a valid age between 1 and 120, or leave blank.' });
+    return;
+  }
+  if (newPassword && newPassword.length < 8) {
+    res.status(400).json({ error: 'New password must be at least 8 characters long.' });
+    return;
+  }
+
+  const duplicateEmail = db.prepare('SELECT id FROM users WHERE lower(email) = ? AND id != ?').get(email, targetId);
+  if (duplicateEmail) {
+    res.status(409).json({ error: 'Another family account already uses that email.' });
+    return;
+  }
+
+  if (existing.role === 'admin' && role !== 'admin') {
+    const adminCount = (db.prepare(`SELECT COUNT(*) as c FROM users WHERE role = 'admin'`).get() as { c: number }).c;
+    if (adminCount <= 1) {
+      res.status(400).json({ error: 'At least one Parent Administrator account is required.' });
+      return;
+    }
+  }
+
+  db.prepare(
+    `UPDATE users SET name = ?, email = ?, role = ?, age = ?, bio = ?, avatar_url = ?, updated_at = datetime('now') WHERE id = ?`
+  ).run(name, email, role, age, bio, avatarUrl, targetId);
+
+  if (newPassword) {
+    const hash = bcrypt.hashSync(newPassword, 10);
+    db.prepare(`UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?`).run(hash, targetId);
+    if (targetId === req.user!.id && req.cookies?.fc_session) {
+      db.prepare('DELETE FROM sessions WHERE user_id = ? AND id != ?').run(targetId, req.cookies.fc_session);
+    } else {
+      db.prepare('DELETE FROM sessions WHERE user_id = ?').run(targetId);
+    }
+  }
+
+  broadcastPresence();
+  logActivity(req.user!.id, 'Profile Updated', `${req.user!.name} updated profile details for ${name}`);
+
+  const updated = db
+    .prepare(
+      'SELECT id, name, email, role, age, avatar_url, bio, points, streak_days, is_online, last_active_at FROM users WHERE id = ?'
+    )
+    .get(targetId);
+  res.json({ user: updated });
+});
+
+app.delete('/api/admin/users/:id', requireAuth, requireAdmin, (req: AuthedRequest, res: Response) => {
+  const targetId = Number(req.params.id);
+  if (targetId === req.user!.id) {
+    res.status(400).json({ error: 'You cannot delete the account you are currently signed in with.' });
+    return;
+  }
+  const existing = db.prepare('SELECT id, name, role FROM users WHERE id = ?').get(targetId) as
+    | { id: number; name: string; role: 'admin' | 'student' }
+    | undefined;
+  if (!existing) {
+    res.status(404).json({ error: 'Family member not found.' });
+    return;
+  }
+  if (existing.role === 'admin') {
+    const adminCount = (db.prepare(`SELECT COUNT(*) as c FROM users WHERE role = 'admin'`).get() as { c: number }).c;
+    if (adminCount <= 1) {
+      res.status(400).json({ error: 'Cannot delete the last Parent Administrator account.' });
+      return;
+    }
+  }
+
+  db.prepare('UPDATE coding_challenges SET created_by = ? WHERE created_by = ?').run(req.user!.id, targetId);
+  db.prepare('UPDATE racing_rooms SET host_user_id = ? WHERE host_user_id = ?').run(req.user!.id, targetId);
+  db.prepare('UPDATE video_meetings SET host_user_id = ? WHERE host_user_id = ?').run(req.user!.id, targetId);
+  db.prepare('UPDATE user_achievements SET awarded_by = NULL WHERE awarded_by = ?').run(targetId);
+  db.prepare('UPDATE reward_transactions SET awarded_by = NULL WHERE awarded_by = ?').run(targetId);
+
+  const directConvs = db
+    .prepare(
+      `SELECT c.id FROM conversations c
+       JOIN conversation_members cm ON cm.conversation_id = c.id
+       WHERE c.type = 'direct' AND cm.user_id = ?`
+    )
+    .all(targetId) as { id: number }[];
+  for (const dc of directConvs) {
+    db.prepare('DELETE FROM conversations WHERE id = ?').run(dc.id);
+  }
+
+  db.prepare('DELETE FROM users WHERE id = ?').run(targetId);
+  broadcastPresence();
+  logActivity(req.user!.id, 'Account Removed', `${req.user!.name} removed family account ${existing.name}`);
   res.json({ ok: true });
 });
 

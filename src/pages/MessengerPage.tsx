@@ -150,7 +150,7 @@ export function MessengerPage({ currentUser, liveMembers }: { currentUser: User;
       <div className="border-b border-slate-200 pb-4">
         <h1 className="text-2xl font-bold text-slate-900">Family Messenger</h1>
         <p className="text-sm text-slate-600">
-          Private real-time messaging strictly for Dad, Leo, and Maya.
+          Private real-time messaging strictly for your authorized family members.
         </p>
       </div>
 

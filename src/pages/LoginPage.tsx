@@ -1,20 +1,15 @@
 import { useState } from 'react';
-import { Lock, ShieldCheck } from 'lucide-react';
+import { Eye, EyeOff, Lock, ShieldCheck } from 'lucide-react';
 import type { User } from '../types';
 
 interface LoginPageProps {
   onSuccess: (user: User) => void;
 }
 
-const FAMILY_TEST_ACCOUNTS = [
-  { label: 'Father (Admin)', email: 'father@familyconnect.local', pass: 'FatherPass123!', avatar: '/src/assets/images/avatar_father_1794844438894.jpg' },
-  { label: 'Leo (Age 12)', email: 'leo@familyconnect.local', pass: 'LeoCode123!', avatar: '/src/assets/images/avatar_child_one_1794844439270.jpg' },
-  { label: 'Maya (Age 9)', email: 'maya@familyconnect.local', pass: 'MayaCode123!', avatar: '/src/assets/images/avatar_child_two_1794844439585.jpg' },
-];
-
 export function LoginPage({ onSuccess }: LoginPageProps) {
-  const [email, setEmail] = useState('father@familyconnect.local');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -55,7 +50,7 @@ export function LoginPage({ onSuccess }: LoginPageProps) {
               Family Connect — Learn, Play &amp; Stay Together
             </h1>
             <p className="mt-3 text-sm leading-relaxed text-slate-300">
-              An invite-only home hub for coding lessons, sandboxed website building, 3-player Grand Prix racing, live video calls, and private family messaging.
+              An invite-only home hub for coding lessons, sandboxed website building, multiplayer Grand Prix racing, live video calls, and private family messaging.
             </p>
           </div>
 
@@ -69,7 +64,7 @@ export function LoginPage({ onSuccess }: LoginPageProps) {
           </div>
 
           <p className="mt-6 text-xs text-slate-400">
-            Public registration is disabled. Only the 3 authorized family accounts can sign in.
+            Public registration is disabled. Only family accounts authorized by the Parent Administrator can sign in.
           </p>
         </div>
 
@@ -102,15 +97,25 @@ export function LoginPage({ onSuccess }: LoginPageProps) {
               <label htmlFor="login-password" className="block text-xs font-semibold text-slate-700">
                 Password
               </label>
-              <input
-                id="login-password"
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="mt-1.5 w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 focus:border-blue-600 focus:outline-none"
-                placeholder="Enter your password"
-              />
+              <div className="relative mt-1.5">
+                <input
+                  id="login-password"
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 pr-10 text-sm text-slate-900 focus:border-blue-600 focus:outline-none"
+                  placeholder="Enter your password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
+                  aria-label="Toggle password visibility"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
 
             <div className="flex items-center justify-between">
@@ -140,27 +145,6 @@ export function LoginPage({ onSuccess }: LoginPageProps) {
               {loading ? 'Signing in...' : 'Sign In'}
             </button>
           </form>
-
-          <div className="mt-7 border-t border-slate-200 pt-5">
-            <p className="text-xs font-semibold text-slate-700">Quick-Fill Authorized Accounts</p>
-            <div className="mt-2.5 grid grid-cols-1 gap-2 sm:grid-cols-3">
-              {FAMILY_TEST_ACCOUNTS.map((acc) => (
-                <button
-                  key={acc.email}
-                  type="button"
-                  onClick={() => {
-                    setEmail(acc.email);
-                    setPassword(acc.pass);
-                    setError(null);
-                  }}
-                  className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-left hover:border-blue-300 hover:bg-blue-50/50 transition-colors"
-                >
-                  <img src={acc.avatar} alt={acc.label} className="h-7 w-7 rounded-full object-cover shrink-0" />
-                  <span className="truncate text-xs font-medium text-slate-800">{acc.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
       </div>
     </div>

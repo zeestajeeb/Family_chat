@@ -390,7 +390,7 @@ export function RacingPage({ currentUser, onPointsUpdated }: { currentUser: User
             <div className="lg:col-span-7 rounded-xl border border-slate-200 bg-white p-6 space-y-5">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-bold text-slate-900">Host Private Family Race</h2>
-                <span className="text-xs text-slate-500">Max 3 Players</span>
+                <span className="text-xs text-slate-500">Max 6 Players</span>
               </div>
 
               <div className="overflow-hidden rounded-xl border border-slate-200">
@@ -470,7 +470,7 @@ export function RacingPage({ currentUser, onPointsUpdated }: { currentUser: User
               <form onSubmit={joinRoom} className="rounded-xl border border-slate-200 bg-white p-6 space-y-4">
                 <h2 className="text-lg font-bold text-slate-900">Join with Invite Code</h2>
                 <p className="text-xs text-slate-600">
-                  Enter the 6-character room code shared by Dad, Leo, or Maya.
+                  Enter the 6-character room code shared by a family member.
                 </p>
                 <div className="flex gap-2">
                   <input
